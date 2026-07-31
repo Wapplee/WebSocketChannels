@@ -4,56 +4,39 @@ const https = require('https');
 const port = process.env.PORT || 8080;
 const wss = new WebSocketServer({ port });
 
-console.log(`Relay server running on port ${port}`);
+console.log(`Relay server active on port ${port}`);
 
-wss.on('connection', (ws) => {
-  // Default channel until client subscribes
-  ws.channel = null;
+wss.on('connection', (ws, req) => {
+  // Extract room name from URL path, removing leading "/" and query params
+  // e.g. "/room_123" -> "room_123"
+  const rawPath = req.url.split('?')[0];
+  const room = rawPath.replace(/^\/+/, '') || 'default';
 
-  ws.on('message', (rawData) => {
-    try {
-      const data = JSON.parse(rawData.toString());
+  ws.room = room;
+  console.log(`[+] Client connected to room: ${ws.room}`);
 
-      // 1. ACTION: JOIN / SUBSCRIBE TO A CHANNEL
-      if (data.action === 'subscribe') {
-        ws.channel = data.channel;
-        console.log(`[+] Client subscribed to channel: ${ws.channel}`);
-        return;
+  ws.on('message', (message) => {
+    const payload = message.toString();
+
+    // Relay the message to all clients connected to the EXACT same room
+    wss.clients.forEach((client) => {
+      if (client !== ws && client.readyState === 1 && client.room === ws.room) {
+        client.send(payload);
       }
-
-      // 2. ACTION: PUBLISH SCRIPT TO A CHANNEL
-      if (data.action === 'publish') {
-        const targetChannel = data.channel;
-        const scriptPayload = data.script;
-
-        // Relay ONLY to clients on the exact same channel (excluding the sender)
-        wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === 1 && client.channel === targetChannel) {
-            client.send(JSON.stringify({
-              channel: targetChannel,
-              script: scriptPayload
-            }));
-          }
-        });
-      }
-    } catch (err) {
-      console.error('Invalid JSON payload received:', rawData.toString());
-    }
+    });
   });
 
   ws.on('close', () => {
-    if (ws.channel) {
-      console.log(`[-] Client disconnected from channel: ${ws.channel}`);
-    }
+    console.log(`[-] Client disconnected from room: ${ws.room}`);
   });
 });
 
-// SELF-PING KEEP-ALIVE: Prevents Render free tier idle sleep
+// Keep Render free tier awake
 const RENDER_APP_URL = process.env.RENDER_EXTERNAL_URL;
 if (RENDER_APP_URL) {
   setInterval(() => {
     https.get(RENDER_APP_URL, (res) => {
-      console.log(`[Keep-Alive] Pinged app, status: ${res.statusCode}`);
+      console.log(`[Keep-Alive] Ping status: ${res.statusCode}`);
     }).on('error', (err) => {
       console.error('[Keep-Alive] Error:', err.message);
     });
