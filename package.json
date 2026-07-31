@@ -1,0 +1,12 @@
+{
+  "name": "websocket-channels",
+  "version": "1.0.0",
+  "description": "Roblox Studio to Executor WebSocket Relay",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}
